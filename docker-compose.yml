@@ -1,0 +1,69 @@
+version: '2.1'
+
+services:
+  key-db:
+    image: mysql:5.7.32
+    container_name: key_db
+    restart: always
+    volumes:
+      - .storage/mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: my_database
+      MYSQL_USER: my_user
+      MYSQL_PASSWORD: my_password
+      MYSQL_ROOT_PASSWORD: my_password
+    command: mysqld --ignore-db-dir=lost+found --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --innodb-buffer-pool-size=1G --max-allowed-packet=1G --wait-timeout=28800
+    healthcheck:
+      test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
+      timeout: 20s
+      retries: 10
+
+  key-api:
+    build:
+      context: .
+      dockerfile: ./dev.Dockerfile
+    image: ssi-registry.teda.th/ssi/key-repository-api/staging:latest
+    container_name: key_api
+    restart: always
+    volumes:
+      - .:/app
+    environment:
+      APP_HOST: :8081
+      APP_ENV: dev
+      APP_LOG_LEVEL: debug
+      APP_DB_DRIVER: mysql
+      APP_DB_HOST: key-db
+      APP_DB_USER: my_user
+      APP_DB_PASSWORD: my_password
+      APP_DB_PORT: '3306'
+      APP_DB_NAME: my_database
+      APP_HSM_PIN: "547235"
+      APP_HSM_SLOT: "8"
+    depends_on:
+      - key-db
+    ports:
+      - 8081:8081
+
+  migration:
+    build:
+      context: .
+      dockerfile: migrate.Dockerfile
+    image: ssi-registry.teda.th/ssi/key-repository-api/staging-migrate:latest
+    volumes:
+      - .env:/app/.env
+    depends_on:
+      - key-db
+
+networks:
+  default:
+    external:
+      name: dev_network
+  # seed:
+  #   build:
+  #     context: .
+  #     dockerfile: ./seed.Dockerfile
+  #   image: ssi-registry.teda.th/ssi/key-repository-api/staging-seed:latest
+  #   volumes:
+  #     - .env:/app/.env
+  #   depends_on:
+  #     - db
